@@ -43,6 +43,7 @@ class LeuceMinthaBot(commands.Bot):
         )
 
     async def on_ready(self) -> None:
+        print(f"READY: {self.user} ({self.user.id if self.user else '?'}) | guilds={len(self.guilds)} | prefix=lm!")
         log.info(
             "Logged in as %s (%s)",
             self.user,

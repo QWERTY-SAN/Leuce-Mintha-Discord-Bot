@@ -33,7 +33,8 @@ class Config:
         "GEMINI_MODEL",
         "gemini-3.5-flash-lite",
     )
-    BOT_PREFIX = os.getenv("BOT_PREFIX", "lm!")
+    # Fixed prefix for this bot so it cannot conflict with the existing Hades bot.
+    BOT_PREFIX = "lm!"
 
     MAX_HISTORY = env_int("MAX_HISTORY", 16)
     MAX_OUTPUT_TOKENS = env_int("MAX_OUTPUT_TOKENS", 768)

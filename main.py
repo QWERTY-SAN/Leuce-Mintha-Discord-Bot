@@ -48,6 +48,7 @@ def main() -> None:
     health_thread.start()
 
     bot = LeuceMinthaBot()
+    print("Starting Leuce & Mintha with fixed prefix: lm!")
     bot.run(Config.DISCORD_TOKEN)
 
 
