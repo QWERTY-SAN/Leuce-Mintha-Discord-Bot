@@ -48,7 +48,7 @@ def main() -> None:
     health_thread.start()
 
     bot = LeuceMinthaBot()
-    bot.run()
+    bot.run(Config.DISCORD_TOKEN)
 
 
 if __name__ == "__main__":
