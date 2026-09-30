@@ -173,3 +173,7 @@ Test after deployment with:
 lm!ping
 lm!hades hello
 ```
+
+### Mention-only behavior
+
+A bot-only mention such as `@Leuce & Mintha` is treated as a valid chat request and produces a natural Leuce/Mintha greeting.

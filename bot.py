@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import time
 
 import discord
@@ -140,7 +141,8 @@ class LeuceMinthaBot(commands.Bot):
             ", ".join(sorted(command.name for command in self.commands)),
         )
         await self.change_presence(
-            activity=discord.Game(name=f"{Config.BOT_PREFIX}hadeshelp")
+            status=discord.Status.online,
+            activity=None,
         )
 
     async def on_command_error(
@@ -194,40 +196,42 @@ class LeuceMinthaBot(commands.Bot):
         if self.user is None:
             return None
 
-        # Prefer the raw Discord mention token instead of relying only on
-        # message.mentions. This handles both forms Discord can send:
-        # <@USER_ID> and <@!USER_ID>.
-        mention_patterns = (
-            f"<@{self.user.id}>",
-            f"<@!{self.user.id}>",
-        )
-
         content = message.content
-        mentioned = self.user in message.mentions
+        bot_id = self.user.id
 
-        for token in mention_patterns:
-            if token in content:
+        # Discord normally serializes a mention as <@ID> or <@!ID>.
+        # Detect it directly instead of depending on message.mentions.
+        mention_pattern = re.compile(rf"<@!?{bot_id}>")
+        content, mention_count = mention_pattern.subn(" ", content)
+
+        mentioned = mention_count > 0 or self.user in message.mentions
+
+        # Also accept the bot's visible name when someone types it manually
+        # instead of creating a real Discord mention.
+        labels = {
+            getattr(self.user, "display_name", ""),
+            getattr(self.user, "name", ""),
+        }
+        for label in labels:
+            if not label:
+                continue
+            typed_pattern = re.compile(rf"@{re.escape(label)}(?=\s|$)", re.IGNORECASE)
+            content, typed_count = typed_pattern.subn(" ", content, count=1)
+            if typed_count:
                 mentioned = True
-                content = content.replace(token, " ")
-
-        # Fallback for manually typed display-name mentions such as
-        # "@Leuce & Mintha hello" when Discord did not create a real mention.
-        display_name = getattr(self.user, "display_name", "")
-        username = getattr(self.user, "name", "")
-        for label in (display_name, username):
-            if label:
-                typed_token = f"@{label}"
-                if typed_token.lower() in content.lower():
-                    mentioned = True
-                    start = content.lower().find(typed_token.lower())
-                    content = content[:start] + " " + content[start + len(typed_token):]
-                    break
+                break
 
         if not mentioned:
             return None
 
-        content = content.strip()
-        return content or None
+        cleaned = content.strip()
+        log.info(
+            "Mention detected from user %s in channel %s: %r",
+            message.author.id,
+            message.channel.id,
+            cleaned,
+        )
+        return cleaned or "The user just mentioned you without saying anything else. Respond naturally as Leuce and Mintha and greet them."
 
     def _conversation_key(self, message: discord.Message) -> tuple[int, int]:
         return (message.author.id, message.channel.id)
