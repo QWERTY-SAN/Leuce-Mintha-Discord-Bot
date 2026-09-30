@@ -8,13 +8,13 @@ from google.genai import types
 
 from .config import MAX_INPUT_CHARS, REQUEST_TIMEOUT
 from .memory import MessageTurn
-from .persona import BOT_PERSONA
+from .persona import build_persona
 
 logger = logging.getLogger("leuce_mintha.gemini")
 
 
 class GeminiError(RuntimeError):
-    """Safe wrapper for Gemini request failures."""
+    """Safe wrapper around Gemini API failures."""
 
 
 class GeminiService:
@@ -25,12 +25,11 @@ class GeminiService:
         self.thinking_level = thinking_level
 
     @staticmethod
-    def _normalize_user_message(text: str) -> str:
+    def _trim_message(text: str) -> str:
         text = text.strip()
         if len(text) <= MAX_INPUT_CHARS:
             return text
-        cutoff = max(0, MAX_INPUT_CHARS - 80)
-        return text[:cutoff].rstrip() + "\n\n[Message truncated to keep the conversation manageable.]"
+        return text[: MAX_INPUT_CHARS - 80].rstrip() + "\n\n[Message truncated.]"
 
     @classmethod
     def build_contents(cls, history: Sequence[MessageTurn], user_message: str) -> list[types.Content]:
@@ -45,19 +44,18 @@ class GeminiService:
         contents.append(
             types.Content(
                 role="user",
-                parts=[types.Part.from_text(text=cls._normalize_user_message(user_message))],
+                parts=[types.Part.from_text(text=cls._trim_message(user_message))],
             )
         )
         return contents
 
-    async def generate(self, history: Sequence[MessageTurn], user_message: str) -> str:
+    async def generate(self, history: Sequence[MessageTurn], user_message: str, mode: str) -> str:
         config = types.GenerateContentConfig(
-            system_instruction=BOT_PERSONA,
+            system_instruction=build_persona(mode),
             max_output_tokens=self.max_output_tokens,
             thinking_config=types.ThinkingConfig(thinking_level=self.thinking_level),
         )
         last_error: Exception | None = None
-
         for attempt in range(3):
             try:
                 response = await asyncio.wait_for(
@@ -71,19 +69,17 @@ class GeminiService:
                 text = getattr(response, "text", None)
                 if text:
                     return text.strip()
-                raise GeminiError("Gemini returned no text.")
+                raise GeminiError("Gemini returned an empty response.")
             except asyncio.TimeoutError as exc:
                 last_error = exc
-                logger.warning("Gemini request timed out on attempt %d/3.", attempt + 1)
+                logger.warning("Gemini timeout on attempt %d/3.", attempt + 1)
             except Exception as exc:
                 if not self._retryable(exc):
-                    raise GeminiError(f"Gemini request rejected: {exc}") from exc
+                    raise GeminiError("Gemini rejected the request.") from exc
                 last_error = exc
                 logger.warning("Retryable Gemini failure on attempt %d/3: %s", attempt + 1, exc)
-
             if attempt < 2:
-                await asyncio.sleep((2**attempt) + random.uniform(0.1, 0.5))
-
+                await asyncio.sleep((2 ** attempt) + random.uniform(0.1, 0.6))
         raise GeminiError("Gemini request failed after retries.") from last_error
 
     @staticmethod
@@ -92,19 +88,13 @@ class GeminiService:
         if code in {408, 429, 500, 502, 503, 504}:
             return True
         text = f"{type(exc).__name__} {exc}".lower()
-        return any(
-            term in text
-            for term in (
-                "timeout",
-                "timed out",
-                "deadline",
-                "rate limit",
-                "resource exhausted",
-                "temporarily unavailable",
-                "service unavailable",
-            )
-        )
+        return any(term in text for term in (
+            "timeout", "timed out", "deadline", "rate limit",
+            "resource exhausted", "temporarily unavailable", "service unavailable",
+        ))
 
     async def close(self) -> None:
-        await self.client.aio.aclose()
-        self.client.close()
+        try:
+            await self.client.aio.aclose()
+        finally:
+            self.client.close()

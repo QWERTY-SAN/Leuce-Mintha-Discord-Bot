@@ -3,24 +3,18 @@ import weakref
 
 from .config import MAX_CONCURRENT_REQUESTS, MAX_QUEUE_WAIT
 from .gemini_client import GeminiError, GeminiService
-from .memory import ConversationMemory
+from .memory import ConversationKey, ConversationMemory
 
 
 class LeuceMinthaChat:
     def __init__(self, gemini: GeminiService, memory: ConversationMemory) -> None:
         self.gemini = gemini
         self.memory = memory
-        self._locks: weakref.WeakValueDictionary[str, asyncio.Lock] = weakref.WeakValueDictionary()
+        self._locks: weakref.WeakValueDictionary[ConversationKey, asyncio.Lock] = weakref.WeakValueDictionary()
         self._semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
         self._active_requests = 0
         self._total_requests = 0
-
-    def _get_lock(self, key: str) -> asyncio.Lock:
-        lock = self._locks.get(key)
-        if lock is None:
-            lock = asyncio.Lock()
-            self._locks[key] = lock
-        return lock
+        self._failed_requests = 0
 
     @property
     def active_requests(self) -> int:
@@ -30,7 +24,18 @@ class LeuceMinthaChat:
     def total_requests(self) -> int:
         return self._total_requests
 
-    async def ask(self, key: str, message: str) -> str:
+    @property
+    def failed_requests(self) -> int:
+        return self._failed_requests
+
+    def _get_lock(self, key: ConversationKey) -> asyncio.Lock:
+        lock = self._locks.get(key)
+        if lock is None:
+            lock = asyncio.Lock()
+            self._locks[key] = lock
+        return lock
+
+    async def ask(self, key: ConversationKey, message: str, mode: str) -> str:
         try:
             await asyncio.wait_for(self._semaphore.acquire(), timeout=MAX_QUEUE_WAIT)
         except asyncio.TimeoutError as exc:
@@ -41,19 +46,23 @@ class LeuceMinthaChat:
                 self._active_requests += 1
                 self._total_requests += 1
                 try:
-                    history = list(self.memory.get(key))
-                    reply = await self.gemini.generate(history, message)
+                    history = self.memory.get(key)
+                    reply = await self.gemini.generate(history, message, mode)
                     self.memory.add_turn(key, "user", message)
                     self.memory.add_turn(key, "model", reply)
                     return reply
                 except GeminiError:
+                    self._failed_requests += 1
+                    raise
+                except Exception:
+                    self._failed_requests += 1
                     raise
                 finally:
                     self._active_requests -= 1
         finally:
             self._semaphore.release()
 
-    def reset(self, key: str) -> None:
+    def reset(self, key: ConversationKey) -> None:
         self.memory.clear(key)
 
     def prune_memory(self) -> int:
