@@ -1,0 +1,4 @@
+discord.py==2.7.1
+google-genai==2.23.0
+Flask>=3.1,<4
+python-dotenv>=1.1,<2
