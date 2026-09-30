@@ -1,152 +1,148 @@
 # Leuce & Mintha Discord AI
 
-A modular Discord AI chatbot inspired by Leuce and Mintha from *Aether Gazer*, using Gemini 3.5 Flash-Lite and designed for Render.
+A modular Discord AI chatbot for Leuce & Mintha from *Aether Gazer*, structured similarly to the Hades Discord AI bot while keeping a separate persona and `lm!` prefix.
 
 ## Features
 
+- Python + discord.py
+- Gemini API via `google-genai`
 - Gemini 3.5 Flash-Lite
-- Leuce + Mintha dual-character persona
-- `lm!hades <text>`
-- `lm!reset`
-- `lm!ping`
-- `lm!hadeshelp`
-- Replies to direct `@mentions` in guilds
-- Replies to messages in DMs
-- Per-user/per-channel conversation memory
-- Memory TTL and conversation cap
-- Discord 2,000-character response splitting
+- `lm!` prefix commands
+- Mention chat, mention-only greetings, DMs, and replies to the bot
+- Per-server/channel/user conversation memory
+- Automatic memory expiration and bounded memory usage
 - Per-user cooldown
-- Concurrent-request limit
-- Gemini retry handling
-- Render health endpoint
-- No API keys stored in source code
-
-## 1. Discord bot setup
-
-Create an application in the Discord Developer Portal, add a bot, and copy its token.
-
-Under the bot's privileged gateway intents, enable **Message Content Intent**. The bot reads normal message text and mention text, so this intent is required.
-
-Invite the bot to the server with permission to view and send messages in the channels where you will use it.
-
-## 2. Gemini API key
-
-Create a Gemini API key in Google AI Studio.
-
-Do not put the real key in GitHub.
-
-The default model is:
-
-`gemini-3.5-flash-lite`
-
-## 3. Local setup
-
-Create a virtual environment and install dependencies:
-
-```powershell
-py -3.10 -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-Copy `.env.example` to `.env` and fill in the two secrets:
-
-```env
-DISCORD_TOKEN=your_discord_token
-GEMINI_API_KEY=your_gemini_api_key
-```
-
-Run:
-
-```powershell
-python main.py
-```
-
-## 4. Render
-
-Use **Web Service** with the Free plan. This repository includes `render.yaml` with the build/start settings and `/health` health check.
-
-Build command:
-
-```text
-pip install -r requirements.txt
-```
-
-Start command:
-
-```text
-python main.py
-```
-
-Set these environment variables in Render:
-
-```text
-DISCORD_TOKEN
-GEMINI_API_KEY
-GEMINI_MODEL=gemini-3.5-flash-lite
-BOT_PREFIX=lm!
-MAX_HISTORY=16
-MAX_OUTPUT_TOKENS=768
-USER_COOLDOWN=2.0
-MAX_CONCURRENT_REQUESTS=3
-REQUEST_TIMEOUT=45
-MEMORY_TTL_SECONDS=21600
-MAX_CONVERSATIONS=500
-MAX_INPUT_CHARS=12000
-```
-
-Do not create a committed `.env` containing real secrets.
-
-## 5. Keeping the free Render service awake
-
-Render free Web Services can spin down after 15 minutes without inbound traffic. This bot exposes:
-
-```text
-https://YOUR-SERVICE.onrender.com/health
-```
-
-A free external HTTP monitor such as UptimeRobot can request `/health` every 5 minutes.
-
-Free Render can still restart a service, and this bot's conversation memory is in RAM, so memory is lost whenever the process restarts or spins down.
+- Global Gemini concurrency limit and queue timeout
+- Same-conversation locking to prevent out-of-order memory updates
+- Gemini timeout/retry handling
+- Discord-safe message splitting
+- Suppressed bot mentions in generated replies
+- `/health` liveness endpoint and `/ready` Discord readiness endpoint
+- Automatic maintenance pruning
+- Online status only; no Playing/Watching/Listening activity
+- Render auto-deploy on commits to `main`
 
 ## Commands
 
 ```text
 lm!hades <message>
+lm!ask <message>
+lm!chat <message>
+lm!leuce <message>
+lm!mintha <message>
 lm!reset
+lm!forget
+lm!clear
+lm!memory
 lm!ping
+lm!status
 lm!hadeshelp
+lm!help
 ```
 
-In a server, you can also mention the bot:
+You can also mention the bot:
 
 ```text
 @Leuce & Mintha hello
 ```
 
-In a DM, just send a normal message.
+or simply:
 
-## Memory
+```text
+@Leuce & Mintha
+```
 
-Memory is keyed by Discord user ID + channel ID. It is bounded by `MAX_HISTORY`, `MEMORY_TTL_SECONDS`, and `MAX_CONVERSATIONS`.
-
-`lm!reset` clears the current user's conversation in the current channel.
+The bot also responds when a user replies directly to one of its messages.
 
 ## Project structure
 
 ```text
-leuce-mintha-discord-bot/
+Leuce-Mintha-Discord-Bot/
 ├── main.py
-├── bot.py
-├── config.py
-├── gemini.py
-├── memory.py
-├── personality.py
 ├── requirements.txt
+├── render.yaml
 ├── .env.example
 ├── .gitignore
-├── render.yaml
-└── README.md
+├── .python-version
+└── leuce_mintha_bot/
+    ├── __init__.py
+    ├── bot.py
+    ├── chat.py
+    ├── config.py
+    ├── gemini_client.py
+    ├── memory.py
+    ├── persona.py
+    ├── utils.py
+    └── web.py
+```
+
+## Discord setup
+
+Enable **Message Content Intent** in the Discord Developer Portal.
+
+Required bot permissions:
+
+- View Channels
+- Send Messages
+- Read Message History
+- Embed Links
+
+Administrator permission is not required.
+
+## Environment
+
+Keep real secrets in Render Environment Variables or a local `.env` file. Never commit `.env`.
+
+```text
+DISCORD_TOKEN=...
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-3.5-flash-lite
+BOT_PREFIX=lm!
+MAX_HISTORY=16
+MAX_OUTPUT_TOKENS=768
+MAX_INPUT_CHARS=6000
+USER_COOLDOWN=2.0
+MAX_CONCURRENT_REQUESTS=3
+MAX_QUEUE_WAIT=20
+REQUEST_TIMEOUT=45
+MEMORY_TTL_SECONDS=21600
+MAX_CONVERSATIONS=500
+MEMORY_PRUNE_INTERVAL=900
+COOLDOWN_PRUNE_INTERVAL=3600
+MAX_COOLDOWN_ENTRIES=5000
+GEMINI_THINKING_LEVEL=low
+```
+
+`BOT_PREFIX` is kept in the environment documentation for compatibility, but the bot intentionally uses the fixed `lm!` prefix so it cannot collide with the separate Hades bot's `h!` prefix.
+
+## Render
+
+Use a Web Service:
+
+```text
+Build Command: pip install -r requirements.txt
+Start Command: python main.py
+Health Check Path: /health
+Branch: main
+Auto Deploy: commit
+```
+
+The service exposes:
+
+```text
+/health  -> liveness, always HTTP 200 while the process is alive
+/ready   -> HTTP 200 only when Discord is connected
+```
+
+Render's service should have Auto-Deploy set to **On Commit** as well as the Blueprint's `autoDeployTrigger: commit` configuration.
+
+## Development
+
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\activate
+pip install -r requirements.txt
+python main.py
 ```
 
 ## Updating
@@ -154,26 +150,23 @@ leuce-mintha-discord-bot/
 ```powershell
 git add .
 git commit -m "Update Leuce and Mintha bot"
-git push
+git push origin main
 ```
 
-With Render auto-deploy enabled, pushing the connected branch triggers a new deployment.
+Render then deploys the newest commit automatically when Auto-Deploy is enabled.
 
-This is a fan-made project and is not an official Aether Gazer, Yongshi, Discord, or Google product.
+## Memory
 
-## Prefix command registration
-
-The text commands are registered through a `commands.Cog` during `setup_hook()`.
-This is required for the modular class-based bot; otherwise `lm!hades`, `lm!ping`,
-`lm!reset`, and `lm!hadeshelp` can be received but never invoked.
-
-Test after deployment with:
+Memory is stored in RAM and keyed by:
 
 ```text
-lm!ping
-lm!hades hello
+server + channel + user
 ```
 
-### Mention-only behavior
+DM conversations use the DM channel instead of a server ID.
 
-A bot-only mention such as `@Leuce & Mintha` is treated as a valid chat request and produces a natural Leuce/Mintha greeting.
+A Render restart/redeploy clears in-memory conversations.
+
+## Fan project
+
+This is a fan-made project and is not affiliated with or endorsed by Aether Gazer, Yongshi, Discord, Google, or Render.

@@ -3,10 +3,11 @@ services:
     name: leuce-mintha-discord-bot
     runtime: python
     plan: free
+    branch: main
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     healthCheckPath: /health
-    autoDeploy: true
+    autoDeployTrigger: commit
     envVars:
       - key: DISCORD_TOKEN
         sync: false
@@ -20,15 +21,25 @@ services:
         value: "16"
       - key: MAX_OUTPUT_TOKENS
         value: "768"
+      - key: MAX_INPUT_CHARS
+        value: "6000"
       - key: USER_COOLDOWN
         value: "2.0"
       - key: MAX_CONCURRENT_REQUESTS
         value: "3"
+      - key: MAX_QUEUE_WAIT
+        value: "20"
       - key: REQUEST_TIMEOUT
         value: "45"
       - key: MEMORY_TTL_SECONDS
         value: "21600"
       - key: MAX_CONVERSATIONS
         value: "500"
-      - key: MAX_INPUT_CHARS
-        value: "12000"
+      - key: MEMORY_PRUNE_INTERVAL
+        value: "900"
+      - key: COOLDOWN_PRUNE_INTERVAL
+        value: "3600"
+      - key: MAX_COOLDOWN_ENTRIES
+        value: "5000"
+      - key: GEMINI_THINKING_LEVEL
+        value: low
