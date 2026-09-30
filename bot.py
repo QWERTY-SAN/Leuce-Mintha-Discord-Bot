@@ -140,7 +140,8 @@ class LeuceMinthaBot(commands.Bot):
             ", ".join(sorted(command.name for command in self.commands)),
         )
         await self.change_presence(
-            activity=discord.Game(name=f"{Config.BOT_PREFIX}hadeshelp")
+            status=discord.Status.online,
+            activity=None,
         )
 
     async def on_command_error(
