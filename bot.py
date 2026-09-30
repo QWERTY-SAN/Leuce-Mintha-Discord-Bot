@@ -140,8 +140,7 @@ class LeuceMinthaBot(commands.Bot):
             ", ".join(sorted(command.name for command in self.commands)),
         )
         await self.change_presence(
-            status=discord.Status.online,
-            activity=None,
+            activity=discord.Game(name=f"{Config.BOT_PREFIX}hadeshelp")
         )
 
     async def on_command_error(
@@ -192,11 +191,42 @@ class LeuceMinthaBot(commands.Bot):
             content = message.content.strip()
             return content or None
 
-        if self.user is None or self.user not in message.mentions:
+        if self.user is None:
             return None
 
-        content = message.content.replace(self.user.mention, "")
-        content = content.replace(f"<@!{self.user.id}>", "").strip()
+        # Prefer the raw Discord mention token instead of relying only on
+        # message.mentions. This handles both forms Discord can send:
+        # <@USER_ID> and <@!USER_ID>.
+        mention_patterns = (
+            f"<@{self.user.id}>",
+            f"<@!{self.user.id}>",
+        )
+
+        content = message.content
+        mentioned = self.user in message.mentions
+
+        for token in mention_patterns:
+            if token in content:
+                mentioned = True
+                content = content.replace(token, " ")
+
+        # Fallback for manually typed display-name mentions such as
+        # "@Leuce & Mintha hello" when Discord did not create a real mention.
+        display_name = getattr(self.user, "display_name", "")
+        username = getattr(self.user, "name", "")
+        for label in (display_name, username):
+            if label:
+                typed_token = f"@{label}"
+                if typed_token.lower() in content.lower():
+                    mentioned = True
+                    start = content.lower().find(typed_token.lower())
+                    content = content[:start] + " " + content[start + len(typed_token):]
+                    break
+
+        if not mentioned:
+            return None
+
+        content = content.strip()
         return content or None
 
     def _conversation_key(self, message: discord.Message) -> tuple[int, int]:
