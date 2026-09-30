@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import time
 
@@ -10,6 +11,81 @@ from memory import ConversationMemory
 from personality import BOT_PERSONA
 
 log = logging.getLogger("leuce_mintha")
+
+
+class LeuceMinthaCommands(commands.Cog):
+    """Prefix commands for the Leuce & Mintha chatbot."""
+
+    def __init__(self, bot: "LeuceMinthaBot") -> None:
+        self.bot = bot
+
+    @commands.command(name="hades")
+    @commands.cooldown(1, Config.USER_COOLDOWN, commands.BucketType.user)
+    async def hades_command(
+        self,
+        ctx: commands.Context,
+        *,
+        prompt: str = "",
+    ) -> None:
+        """Chat with Leuce and Mintha."""
+        prompt = prompt.strip()
+        if not prompt:
+            await ctx.reply(
+                f"Use `{Config.BOT_PREFIX}hades <message>`. ",
+                mention_author=False,
+            )
+            return
+
+        await self.bot.handle_context_chat(ctx, prompt)
+
+    @commands.command(name="reset")
+    @commands.cooldown(1, 3.0, commands.BucketType.user)
+    async def reset_command(self, ctx: commands.Context) -> None:
+        """Clear the current user's conversation in this channel."""
+        self.bot.memory.clear((ctx.author.id, ctx.channel.id))
+        await ctx.reply(
+            "Conversation memory cleared for this channel.",
+            mention_author=False,
+        )
+
+    @commands.command(name="ping")
+    @commands.cooldown(1, 3.0, commands.BucketType.user)
+    async def ping_command(self, ctx: commands.Context) -> None:
+        """Show bot latency."""
+        latency_ms = round(self.bot.latency * 1000)
+        await ctx.reply(f"Pong! `{latency_ms}ms`", mention_author=False)
+
+    @commands.command(name="hadeshelp")
+    @commands.cooldown(1, 3.0, commands.BucketType.user)
+    async def hades_help_command(self, ctx: commands.Context) -> None:
+        """Show chatbot commands."""
+        prefix = Config.BOT_PREFIX
+
+        embed = discord.Embed(
+            title="Leuce & Mintha",
+            description=(
+                "Aether Gazer fan-made AI chatbot powered by "
+                f"`{Config.GEMINI_MODEL}`."
+            ),
+            color=0x6C63FF,
+        )
+        embed.add_field(
+            name="Commands",
+            value=(
+                f"`{prefix}hades <message>` — chat with Leuce & Mintha\n"
+                f"`{prefix}reset` — clear your current memory\n"
+                f"`{prefix}ping` — show this bot's latency\n"
+                f"`{prefix}hadeshelp` — show this help"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Mention",
+            value="@mention the bot in a server to chat without a command.",
+            inline=False,
+        )
+        embed.set_footer(text="Aether Gazer • Yongshi • Fan-made project")
+        await ctx.reply(embed=embed, mention_author=False)
 
 
 class LeuceMinthaBot(commands.Bot):
@@ -38,18 +114,31 @@ class LeuceMinthaBot(commands.Bot):
             request_timeout=Config.REQUEST_TIMEOUT,
         )
         self.user_cooldowns: dict[tuple[int, int], float] = {}
-        self.request_semaphore = __import__("asyncio").Semaphore(
-            Config.MAX_CONCURRENT_REQUESTS
+        self.request_semaphore = asyncio.Semaphore(Config.MAX_CONCURRENT_REQUESTS)
+
+    async def setup_hook(self) -> None:
+        # Prefix commands must be explicitly registered when defined in a Cog.
+        await self.add_cog(LeuceMinthaCommands(self))
+        log.info(
+            "Registered prefix commands: %s",
+            ", ".join(sorted(command.name for command in self.commands)),
         )
 
     async def on_ready(self) -> None:
-        print(f"READY: {self.user} ({self.user.id if self.user else '?'}) | guilds={len(self.guilds)} | prefix=lm!")
+        print(
+            f"READY: {self.user} ({self.user.id if self.user else '?'}) "
+            f"| guilds={len(self.guilds)} | prefix={Config.BOT_PREFIX}"
+        )
         log.info(
             "Logged in as %s (%s)",
             self.user,
             self.user.id if self.user else "?",
         )
         log.info("Connected to %d guild(s).", len(self.guilds))
+        log.info(
+            "Available commands: %s",
+            ", ".join(sorted(command.name for command in self.commands)),
+        )
         await self.change_presence(
             activity=discord.Game(name=f"{Config.BOT_PREFIX}hadeshelp")
         )
@@ -69,7 +158,14 @@ class LeuceMinthaBot(commands.Bot):
             )
             return
 
-        log.error("Command error: %r", error)
+        if isinstance(error, commands.MissingRequiredArgument):
+            await ctx.reply(
+                f"Use `{Config.BOT_PREFIX}hades <message>`.",
+                mention_author=False,
+            )
+            return
+
+        log.exception("Command error", exc_info=error)
         await ctx.reply(
             "Something went wrong while handling that command.",
             mention_author=False,
@@ -79,6 +175,7 @@ class LeuceMinthaBot(commands.Bot):
         if message.author.bot:
             return
 
+        # Prefix commands need process_commands() because we override on_message.
         if message.content.startswith(Config.BOT_PREFIX):
             await self.process_commands(message)
             return
@@ -165,18 +262,11 @@ class LeuceMinthaBot(commands.Bot):
         for chunk in split_discord_message(response):
             await message.reply(chunk, mention_author=False)
 
-    @commands.command(name="hades")
-    @commands.cooldown(1, Config.USER_COOLDOWN, commands.BucketType.user)
-    async def hades_command(self, ctx: commands.Context, *, prompt: str = "") -> None:
-        """Chat with Leuce and Mintha."""
-        prompt = prompt.strip()
-        if not prompt:
-            await ctx.reply(
-                f"Use `{Config.BOT_PREFIX}hades <message>`. ",
-                mention_author=False,
-            )
-            return
-
+    async def handle_context_chat(
+        self,
+        ctx: commands.Context,
+        prompt: str,
+    ) -> None:
         if len(prompt) > Config.MAX_INPUT_CHARS:
             prompt = prompt[: Config.MAX_INPUT_CHARS].rstrip() + "…"
 
@@ -201,7 +291,10 @@ class LeuceMinthaBot(commands.Bot):
 
         response = response.strip()
         if not response:
-            await ctx.reply("…Nothing came through. Try again.", mention_author=False)
+            await ctx.reply(
+                "…Nothing came through. Try again.",
+                mention_author=False,
+            )
             return
 
         self.memory.add_turn(key, "user", prompt)
@@ -209,55 +302,6 @@ class LeuceMinthaBot(commands.Bot):
 
         for chunk in split_discord_message(response):
             await ctx.reply(chunk, mention_author=False)
-
-    @commands.command(name="reset")
-    @commands.cooldown(1, 3.0, commands.BucketType.user)
-    async def reset_command(self, ctx: commands.Context) -> None:
-        """Clear the current user's conversation in this channel."""
-        self.memory.clear((ctx.author.id, ctx.channel.id))
-        await ctx.reply(
-            "Conversation memory cleared for this channel.",
-            mention_author=False,
-        )
-
-    @commands.command(name="ping")
-    @commands.cooldown(1, 3.0, commands.BucketType.user)
-    async def ping_command(self, ctx: commands.Context) -> None:
-        """Show bot latency."""
-        latency_ms = round(self.latency * 1000)
-        await ctx.reply(f"Pong! `{latency_ms}ms`", mention_author=False)
-
-    @commands.command(name="hadeshelp")
-    @commands.cooldown(1, 3.0, commands.BucketType.user)
-    async def hades_help_command(self, ctx: commands.Context) -> None:
-        """Show chatbot commands."""
-        prefix = Config.BOT_PREFIX
-
-        embed = discord.Embed(
-            title="Leuce & Mintha",
-            description=(
-                "Aether Gazer fan-made AI chatbot powered by "
-                f"`{Config.GEMINI_MODEL}`."
-            ),
-            color=0x6C63FF,
-        )
-        embed.add_field(
-            name="Commands",
-            value=(
-                f"`{prefix}hades <message>` — chat with Leuce & Mintha\n"
-                f"`{prefix}reset` — clear your current memory\n"
-                f"`{prefix}ping` — show latency\n"
-                f"`{prefix}hadeshelp` — show this help"
-            ),
-            inline=False,
-        )
-        embed.add_field(
-            name="Mention",
-            value="@mention the bot in a server to chat without a command.",
-            inline=False,
-        )
-        embed.set_footer(text="Aether Gazer • Yongshi • Fan-made project")
-        await ctx.reply(embed=embed, mention_author=False)
 
 
 def split_discord_message(text: str, limit: int = 2000) -> list[str]:
@@ -282,10 +326,7 @@ def split_discord_message(text: str, limit: int = 2000) -> list[str]:
         chunk = remaining[:cut].rstrip()
         if chunk:
             chunks.append(chunk)
+
         remaining = remaining[cut:].lstrip()
 
     return chunks
-
-
-def build_bot() -> LeuceMinthaBot:
-    return LeuceMinthaBot()

@@ -160,3 +160,16 @@ git push
 With Render auto-deploy enabled, pushing the connected branch triggers a new deployment.
 
 This is a fan-made project and is not an official Aether Gazer, Yongshi, Discord, or Google product.
+
+## Prefix command registration
+
+The text commands are registered through a `commands.Cog` during `setup_hook()`.
+This is required for the modular class-based bot; otherwise `lm!hades`, `lm!ping`,
+`lm!reset`, and `lm!hadeshelp` can be received but never invoked.
+
+Test after deployment with:
+
+```text
+lm!ping
+lm!hades hello
+```
